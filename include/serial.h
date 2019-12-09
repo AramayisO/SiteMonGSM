@@ -44,6 +44,14 @@ ssize_t serial_write(int fd, uint8_t *buffer, size_t nbytes);
 ssize_t serial_read(int fd, uint8_t *buffer, size_t nbytes);
 
 /**
+ * Flush all data received but not read and all data written but not yet transmitted.
+ *
+ * @param fd File descriptor specifying serial port port to flush.
+ * @return On success, returns 0. Otherwise, returns -1.
+ */
+int serial_ioflush(int fd);
+
+/**
  * Close connection to serial port.
  *
  * @param fd File descriptor specifying port connection to close.

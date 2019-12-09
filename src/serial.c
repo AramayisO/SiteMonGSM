@@ -99,6 +99,11 @@ ssize_t serial_read(int fd, uint8_t *buffer, size_t nbytes)
     return nread;
 }
 
+int serial_ioflush(int fd)
+{
+    return tcflush(fd, TCIOFLUSH);
+}
+
 int serial_close(int fd)
 {
     return close(fd);
