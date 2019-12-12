@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
+// Control characters
 #define CTRL_Z   0x1A
 
 // Supported AT commands
@@ -24,6 +25,10 @@
 #define GSM_CHARSET_IRA  "IRA"
 #define GSM_CHARSET_GSM  "GSM"
 #define GSM_CHARSET_UCS2 "UCS2"
+
+// The buffer capacity should be on less than the size to allow for null
+// terminating character.
+#define GSM_RX_BUF_CAPACITY (GSM_RX_BUF_SIZE - 1)
 
 typedef struct gsm
 {
@@ -59,28 +64,27 @@ static gsm_t gsm;
 static int gsm_check_liveness()
 {
     size_t nbytes;
+
+    // Send AT command to GSM modem.
     sprintf(gsm.tx_buf, "%s\r", AT);
-    nbytes = strlen(gsm.tx_buf);
 
-    if (serial_write(gsm.fd, gsm.tx_buf, nbytes) != nbytes)
+    if (serial_write(gsm.fd, gsm.tx_buf, strlen(gsm.tx_buf)) == -1)
     {
         serial_ioflush(gsm.fd);
         return -1;
     }
 
-    do
-    {
-        nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_SIZE);
-    } while (!nbytes);
+    // Give enough time for GSM modem to have a chance to respond.
+    SLEEP_MSECONDS(500);
 
-    if (nbytes == -1)
+    // Check if GSM modem sent OK response.
+    if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
     {
         serial_ioflush(gsm.fd);
         return -1;
     }
-
     gsm.rx_buf[nbytes] = '\0';
-    return (strstr(gsm.rx_buf, "OK") == NULL) ? 0 : 1;
+    return (strstr(gsm.rx_buf, AT_OK) ? 1 : 0);
 }
 
 /****************************************************************************** 
@@ -96,26 +100,25 @@ static int gsm_check_liveness()
 static int gsm_read_identification()
 {
     size_t nbytes;
+
+    // Send ATI command
     sprintf(gsm.tx_buf, "%s\r", ATI);
-    nbytes = strlen(gsm.tx_buf);
 
-    if (serial_write(gsm.fd, gsm.tx_buf, nbytes) != nbytes)
+    if (serial_write(gsm.fd, gsm.tx_buf, strlen(gsm.tx_buf)) == -1)
     {
         serial_ioflush(gsm.fd);
         return -1;
     }
 
-    do
-    {
-        nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_SIZE);
-    } while (!nbytes);
+    // Give enough time for modem to respond.
+    SLEEP_MSECONDS(500);
 
-    if (nbytes == -1)
+    // Read response from modem. 
+    if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
     {
         serial_ioflush(gsm.fd);
         return -1;
     }
-    // Null terminate to be safe
     gsm.rx_buf[nbytes] = '\0';
 
     char *key = strtok(gsm.rx_buf, ":\n");
@@ -124,43 +127,26 @@ static int gsm_read_identification()
     while (key != NULL)
     {
         if((key = strtok(NULL, ":")) == NULL)
-        {
             break;
-        }
 
         if ((value = strtok(NULL, "\r")) == NULL)
-        {
             break;
-        }
 
         // Note that we copy starting at value + 1 because
         // value[0] is white space.
         if (strcmp(key, "Manufacturer") == 0)
-        {
             strcpy(gsm.identification.manufacturer, value + 1);
-        }
         else if (strcmp(key, "Model"))
-        {
             strcpy(gsm.identification.model, value + 1);
-        }
         else if (strcmp(key, "Revision"))
-        {
             strcpy(gsm.identification.revision, value + 1);
-        }
         else if (strcmp(key, "SVN"))
-        {
             strcpy(gsm.identification.svn, value + 1);
-        }
         else if (strcmp(key, "IMEI"))
-        {
             strcpy(gsm.identification.imei, value + 1);
-        }
         else if (strcmp(key, "+GCAP"))
-        {
             strcpy(gsm.identification.gcap, value + 1);
-        }
     }
-
     return 0;
 }
 
@@ -176,30 +162,28 @@ static int gsm_read_identification()
 int gsm_set_message_format(unsigned int fmt)
 {
     size_t nbytes;
+
+    // Send AT_CMGF command.
     sprintf(gsm.tx_buf, "%s=%u\r", AT_CMGF, fmt);
-    nbytes = strlen(gsm.tx_buf);
 
-    if (serial_write(gsm.fd, gsm.tx_buf, nbytes) != nbytes)
+    if (serial_write(gsm.fd, gsm.tx_buf, strlen(gsm.tx_buf)) == -1)
     {
         serial_ioflush(gsm.fd);
         return -1;
     }
 
-    do
-    {
-        nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_SIZE);
-    }
-    while (nbytes == 0);
+    // Give modem enough time to process command and write response to serial.
+    SLEEP_MSECONDS(500);
 
-    if (nbytes == -1)
+    // Check if modem sent OK response.
+    if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
     {
         serial_ioflush(gsm.fd);
         return -1;
     }
-
     gsm.rx_buf[nbytes] = '\0';
 
-    return (strstr(gsm.rx_buf, AT_OK) == NULL) ? -1 : 0;
+    return (strstr(gsm.rx_buf, AT_OK) ? 0 : -1);
 }
 
 /****************************************************************************** 
@@ -215,30 +199,27 @@ static int gsm_set_character_set(const char *charset)
 {
     size_t nbytes;
 
+    // Send AT+CSCS command.
     sprintf(gsm.tx_buf, "%s=\"%s\"\r", AT_CSCS, charset);
-    nbytes = strlen(gsm.tx_buf);
 
-    if (serial_write(gsm.fd, gsm.tx_buf, nbytes) != nbytes)
+    if (serial_write(gsm.fd, gsm.tx_buf, strlen(gsm.tx_buf)) == -1)
     {
         serial_ioflush(gsm.fd);
         return -1;
     }
 
-    do
-    {
-        nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_SIZE);
-    }
-    while (nbytes == 0);
+    // Give modem enough time to process command and write response to serial.
+    SLEEP_MSECONDS(500);
 
-    if (nbytes == -1)
+    // Check if modem sent OK response.
+    if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
     {
         serial_ioflush(gsm.fd);
         return -1;
     }
-
     gsm.rx_buf[nbytes] = '\0';
 
-    return (strstr(gsm.rx_buf, AT_OK) == NULL) ? -1 : 0;
+    return (strstr(gsm.rx_buf, AT_OK) ? 0 : -1);
 }
 
 /****************************************************************************** 
@@ -331,27 +312,24 @@ int gsm_send_message(const char *destination, const char *message)
 {
     size_t nbytes;
 
+    // Send AT+CMGS command with destination address.
     sprintf(gsm.tx_buf, "%s=\"%s\"\r", AT_CMGS, destination);
-    nbytes = strlen(gsm.tx_buf);
 
-    if (serial_write(gsm.fd, gsm.tx_buf, nbytes) != nbytes)
+    if (serial_write(gsm.fd, gsm.tx_buf, strlen(gsm.tx_buf)) == -1)
     {
         serial_ioflush(gsm.fd);
         return -1;
     }
 
-    do
-    {
-        nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_SIZE);
-    }
-    while (nbytes == 0);
+    // Give modem enough time to process command and write response to serial.
+    SLEEP_MSECONDS(500);
 
-    if (nbytes == -1)
+    // Check if modem responded with the prompt character '>'.
+    if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
     {
         serial_ioflush(gsm.fd);
         return -1;
     }
-
     gsm.rx_buf[nbytes] = '\0';
 
     if (strchr(gsm.rx_buf, '>') == NULL)
@@ -360,34 +338,28 @@ int gsm_send_message(const char *destination, const char *message)
         return -1;
     }
 
+    // Send the message. Note that the modem waits for a Cntl-Z character to
+    // indicate the end of the message to be sent.
     strcpy(gsm.tx_buf, message);
     nbytes = strlen(gsm.tx_buf);
     gsm.tx_buf[nbytes++] = CTRL_Z;
 
-    if (serial_write(gsm.fd, gsm.tx_buf, nbytes) != nbytes)
+    if (serial_write(gsm.fd, gsm.tx_buf, nbytes) == -1)
     {
         serial_ioflush(gsm.fd);
         return -1;
     }
 
-    for (int i = 0; i < 20000000; ++i)
-    {
-        // Spin to give modem time to send message.
-    }
+    // Give modem enough time to process command and write response to serial.
+    SLEEP_SECONDS(5);
 
-    do
-    {
-        nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_SIZE);
-    }
-    while (nbytes == 0);
-
-    if (nbytes == -1)
+    // Check if message was successfully sent. 
+    if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
     {
         serial_ioflush(gsm.fd);
         return -1;
     }
-
     gsm.rx_buf[nbytes] = '\0';
 
-    return (strstr(gsm.rx_buf, "+CMGS") == NULL) ? -1 : 0;
+    return (strstr(gsm.rx_buf, "+CMGS") ? 0 : -1);
 }
