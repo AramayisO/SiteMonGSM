@@ -19,6 +19,7 @@ int has_alphanumeric(const char *str)
             has_alnum = 1;
             break;
         }
+        ++str;
     }
     return has_alnum;
 }
