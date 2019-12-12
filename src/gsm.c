@@ -65,7 +65,7 @@ static gsm_t gsm;
  ******************************************************************************/
 static int gsm_check_liveness()
 {
-    size_t nbytes;
+    ssize_t nbytes;
 
     // Send AT command to GSM modem.
     sprintf(gsm.tx_buf, "%s\r", AT);
@@ -101,7 +101,7 @@ static int gsm_check_liveness()
  ******************************************************************************/
 static int gsm_read_identification()
 {
-    size_t nbytes;
+    ssize_t nbytes;
 
     // Send ATI command
     sprintf(gsm.tx_buf, "%s\r", ATI);
@@ -163,7 +163,7 @@ static int gsm_read_identification()
  ******************************************************************************/
 int gsm_set_message_format(unsigned int fmt)
 {
-    size_t nbytes;
+    ssize_t nbytes;
 
     // Send AT_CMGF command.
     sprintf(gsm.tx_buf, "%s=%u\r", AT_CMGF, fmt);
@@ -199,7 +199,7 @@ int gsm_set_message_format(unsigned int fmt)
  ******************************************************************************/
 static int gsm_set_character_set(const char *charset)
 {
-    size_t nbytes;
+    ssize_t nbytes;
 
     // Send AT+CSCS command.
     sprintf(gsm.tx_buf, "%s=\"%s\"\r", AT_CSCS, charset);
@@ -312,7 +312,7 @@ void gsm_print_identification(FILE *stream)
  ******************************************************************************/
 int gsm_send_message(const char *destination, const char *message)
 {
-    size_t nbytes;
+    ssize_t nbytes;
 
     // Send AT+CMGS command with destination address.
     sprintf(gsm.tx_buf, "%s=\"%s\"\r", AT_CMGS, destination);
