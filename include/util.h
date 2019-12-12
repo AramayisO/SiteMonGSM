@@ -8,6 +8,23 @@
 #ifndef SITE_MON_GSM_UTIL_H
 #define SITE_MON_GSM_UTIL_H
 
+#include <unistd.h>
+
+/**
+ * Suspend execution for specified number of seconds.
+ */
+#define SLEEP_SECONDS(n) (usleep(n * 1000000))
+
+/**
+ * Suspend execution for specified number of milliseconds.
+ */
+#define SLEEP_MSECONDS(n) (usleep(n * 1000))
+
+/**
+ * Suspend execution for specified number of microseconds.
+ */
+#define SLEEP_USECONDS(n) (usleep(n))
+
 /**
  * Checks if a string contains any alphanumeric characters.
  *
