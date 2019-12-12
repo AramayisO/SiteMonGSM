@@ -4,6 +4,7 @@
 #include "debug.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 // Control characters
 #define CTRL_Z   0x1A
@@ -14,6 +15,7 @@
 #define AT_CMGF  "AT+CMGF"
 #define AT_CMGS  "AT+CMGS"
 #define AT_CSCS  "AT+CSCS"
+#define AT_CFUN  "AT+CFUN"
 #define AT_OK    "OK"
 #define AT_ERROR "ERROR"
 
@@ -94,7 +96,7 @@ static int gsm_check_liveness()
  * Description: Reads product identification information from GSM modem and
  *              stores information into gsm.identification structure.
  *
- * Returns:     If successful, returns 0. Otherwise, returns 0.
+ * Returns:     If successful, returns 0. Otherwise, returns -1.
  *
  ******************************************************************************/
 static int gsm_read_identification()
@@ -156,7 +158,7 @@ static int gsm_read_identification()
  *
  * Description: Sets the input and output format of short messages.
  *
- * Returns:     If successful, returns 0. Otherwise, returns 0.
+ * Returns:     If successful, returns 0. Otherwise, returns -1.
  *
  ******************************************************************************/
 int gsm_set_message_format(unsigned int fmt)
@@ -192,7 +194,7 @@ int gsm_set_message_format(unsigned int fmt)
  *
  * Description: Set the character set to bye used by the TE. 
  *
- * Returns:     If successful, returns 0. Otherwise, returns 0.
+ * Returns:     If successful, returns 0. Otherwise, returns -1.
  *
  ******************************************************************************/
 static int gsm_set_character_set(const char *charset)
@@ -228,7 +230,7 @@ static int gsm_set_character_set(const char *charset)
  *
  * Description: 
  *
- * Returns:     If successful, returns 0. Otherwise, returns 0.
+ * Returns:     If successful, returns 0. Otherwise, returns -1.
  *
  ******************************************************************************/
 int gsm_init(const char *serial_port)
@@ -305,7 +307,7 @@ void gsm_print_identification(FILE *stream)
  *
  * Notes:       destination and message must be a null-terminated strings.
  *
- * Returns:     If successful, returns 0. Otherwise, returns 0.
+ * Returns:     If successful, returns 0. Otherwise, returns -1.
  *
  ******************************************************************************/
 int gsm_send_message(const char *destination, const char *message)
@@ -362,4 +364,105 @@ int gsm_send_message(const char *destination, const char *message)
     gsm.rx_buf[nbytes] = '\0';
 
     return (strstr(gsm.rx_buf, "+CMGS") ? 0 : -1);
+}
+
+/****************************************************************************** 
+ *
+ * Function:    gsm_set_functionality_mode()
+ *
+ * Description: Sets the functionality mode of the modem 
+ *
+ * Returns:     If successful, returns 0. Otherwise, returns -1.
+ *
+ ******************************************************************************/
+int gsm_set_functionality_mode(gsm_functionality_mode_t mode)
+{
+    if (mode == GSM_FUNCTIONALITY_MODE_ERROR)
+    {
+        return -1;
+    }
+
+    ssize_t nbytes;
+
+    // Send AT+CFUN command to change mode.
+    sprintf(gsm.tx_buf, "%s=%u\r", AT_CFUN, (unsigned) mode);
+
+    if (serial_write(gsm.fd, gsm.tx_buf, strlen(gsm.tx_buf)) == -1)
+    {
+        serial_ioflush(gsm.fd);
+        return -1;
+    }
+
+    // Give modem enough time to proces command and write output to serial.
+    SLEEP_SECONDS(1);
+
+    // Check that modem responded with OK.
+    if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
+    {
+        serial_ioflush(gsm.fd);
+        return -1;
+    }
+    gsm.rx_buf[nbytes] = '\0';
+
+    return (strstr(gsm.rx_buf, AT_OK) ? 0 : -1);
+}
+
+/****************************************************************************** 
+ *
+ * Function:    gsm_get_functionality_mode()
+ *
+ * Description: Returns the functionality mode of the modem. 
+ *
+ * Returns:     On success, returns the mode of the modem. Otherwise, returns
+ *              GSM_FUNCTIONALITY_MODE_ERROR.
+ *
+ ******************************************************************************/
+gsm_functionality_mode_t gsm_get_functionality_mode()
+{
+    ssize_t nbytes;
+
+    // Send AT+CFUN command to change mode.
+    sprintf(gsm.tx_buf, "%s?\r", AT_CFUN);
+
+    if (serial_write(gsm.fd, gsm.tx_buf, strlen(gsm.tx_buf)) == -1)
+    {
+        serial_ioflush(gsm.fd);
+        return GSM_FUNCTIONALITY_MODE_ERROR;
+    }
+
+    // Give modem enough time to proces command and write output to serial.
+    SLEEP_MSECONDS(500);
+
+    // Check that modem responded with OK.
+    if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
+    {
+        serial_ioflush(gsm.fd);
+        return GSM_FUNCTIONALITY_MODE_ERROR;
+    }
+    gsm.rx_buf[nbytes] = '\0';
+
+    // Find the returned value for the mode.
+    const char KEY[] = "+CFUN:";
+    char *pkey;
+
+    if ((pkey = strstr(gsm.rx_buf, KEY)) == NULL)
+    {
+        return -1;
+    }
+    pkey += strlen(KEY);
+ 
+    // Return appropriate value.
+    switch (atoi(pkey))
+    {
+        case GSM_MINIMUM_FUNCTIONALITY_MODE:
+            return GSM_MINIMUM_FUNCTIONALITY_MODE;
+        case GSM_FULL_FUNCTIONALITY_MODE:
+            return GSM_FULL_FUNCTIONALITY_MODE;
+        case GSM_FLIGHT_MODE:
+            return GSM_FLIGHT_MODE;
+        default:
+            return GSM_FUNCTIONALITY_MODE_ERROR;
+    }
+
+    return GSM_FUNCTIONALITY_MODE_ERROR;
 }

@@ -15,6 +15,21 @@
 
 #include <stdio.h>
 
+typedef enum gsm_functionality_mode
+{
+    // The RF part of the module is powered off and the USIM card is not accessible,
+    // but serial and USB ports are still accessible. The power consumption in
+    // this mode is lower than normal mode and flight mode. 
+    GSM_MINIMUM_FUNCTIONALITY_MODE = 0, 
+    // Normal mode. All parts of the module powered on.
+    GSM_FULL_FUNCTIONALITY_MODE = 1,
+    // The RF part of the module is powered off but serial and USB ports are 
+    // still accessible. Power consumption in this mode is lower than normal mode.
+    GSM_FLIGHT_MODE = 4,  
+    // Catch all that can be used to indicate errors.
+    GSM_FUNCTIONALITY_MODE_ERROR
+} gsm_functionality_mode_t;
+
 /**
  * Initialize the GSM modem to allow for SMS messaging.
  *
@@ -38,6 +53,23 @@ void gsm_print_identification(FILE *stream);
  * @return On success, returns 0. Otherwise, returns -1.
  */
 int gsm_send_message(const char *destination, const char *message);
+
+/**
+ * Sets the functionality mode of the modem.
+ *
+ * @param mode The mode to set the modem to.
+ * @return On success, returns 0. Otherwise, returns -1.
+ * @note This function can be used to set the modem to low power mode.
+ */
+int gsm_set_functionality_mode(gsm_functionality_mode_t mode);
+
+/**
+ * Returns the functionality mode of the modem.
+ *
+ * @return On success, returns the mode of the modem. Otherwise, returns
+ *         @ref GSM_FUNCTIONALITY_MODE_ERROR.
+ */
+gsm_functionality_mode_t gsm_get_functionality_mode(void);
 
 #endif
 
