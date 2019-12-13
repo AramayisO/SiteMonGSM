@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <pthread.h>
 
 // Control characters
 #define CTRL_Z   0x1A
@@ -49,7 +50,8 @@ typedef struct gsm
 } gsm_t;
 
 // Global singleton GSM object
-static gsm_t gsm;
+static gsm_t           gsm;
+static pthread_mutex_t gsm_mutex;
 
 /****************************************************************************** 
  *
@@ -65,7 +67,7 @@ static gsm_t gsm;
  ******************************************************************************/
 static int gsm_check_liveness()
 {
-    ssize_t nbytes;
+    pthread_mutex_lock(&gsm_mutex);
 
     // Send AT command to GSM modem.
     sprintf(gsm.tx_buf, "%s\r", AT);
@@ -73,6 +75,7 @@ static int gsm_check_liveness()
     if (serial_write(gsm.fd, gsm.tx_buf, strlen(gsm.tx_buf)) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
 
@@ -80,13 +83,19 @@ static int gsm_check_liveness()
     SLEEP_MSECONDS(500);
 
     // Check if GSM modem sent OK response.
+    ssize_t nbytes;
     if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
     gsm.rx_buf[nbytes] = '\0';
-    return (strstr(gsm.rx_buf, AT_OK) ? 1 : 0);
+    int isLive = (strstr(gsm.rx_buf, AT_OK) ? 1 : 0);
+
+    pthread_mutex_unlock(&gsm_mutex);
+
+    return isLive;
 }
 
 /****************************************************************************** 
@@ -101,7 +110,7 @@ static int gsm_check_liveness()
  ******************************************************************************/
 static int gsm_read_identification()
 {
-    ssize_t nbytes;
+    pthread_mutex_lock(&gsm_mutex);
 
     // Send ATI command
     sprintf(gsm.tx_buf, "%s\r", ATI);
@@ -109,6 +118,7 @@ static int gsm_read_identification()
     if (serial_write(gsm.fd, gsm.tx_buf, strlen(gsm.tx_buf)) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
 
@@ -116,9 +126,11 @@ static int gsm_read_identification()
     SLEEP_MSECONDS(500);
 
     // Read response from modem. 
+    ssize_t nbytes;
     if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
     gsm.rx_buf[nbytes] = '\0';
@@ -149,6 +161,7 @@ static int gsm_read_identification()
         else if (strcmp(key, "+GCAP"))
             strcpy(gsm.identification.gcap, value + 1);
     }
+    pthread_mutex_unlock(&gsm_mutex);
     return 0;
 }
 
@@ -163,7 +176,7 @@ static int gsm_read_identification()
  ******************************************************************************/
 int gsm_set_message_format(unsigned int fmt)
 {
-    ssize_t nbytes;
+    pthread_mutex_lock(&gsm_mutex);
 
     // Send AT_CMGF command.
     sprintf(gsm.tx_buf, "%s=%u\r", AT_CMGF, fmt);
@@ -171,6 +184,7 @@ int gsm_set_message_format(unsigned int fmt)
     if (serial_write(gsm.fd, gsm.tx_buf, strlen(gsm.tx_buf)) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
 
@@ -178,14 +192,19 @@ int gsm_set_message_format(unsigned int fmt)
     SLEEP_MSECONDS(500);
 
     // Check if modem sent OK response.
+    ssize_t nbytes;
     if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
     gsm.rx_buf[nbytes] = '\0';
+    int ret = (strstr(gsm.rx_buf, AT_OK) ? 0 : -1);
 
-    return (strstr(gsm.rx_buf, AT_OK) ? 0 : -1);
+    pthread_mutex_unlock(&gsm_mutex);
+
+    return ret;
 }
 
 /****************************************************************************** 
@@ -199,7 +218,7 @@ int gsm_set_message_format(unsigned int fmt)
  ******************************************************************************/
 static int gsm_set_character_set(const char *charset)
 {
-    ssize_t nbytes;
+    pthread_mutex_lock(&gsm_mutex);
 
     // Send AT+CSCS command.
     sprintf(gsm.tx_buf, "%s=\"%s\"\r", AT_CSCS, charset);
@@ -207,6 +226,7 @@ static int gsm_set_character_set(const char *charset)
     if (serial_write(gsm.fd, gsm.tx_buf, strlen(gsm.tx_buf)) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
 
@@ -214,14 +234,19 @@ static int gsm_set_character_set(const char *charset)
     SLEEP_MSECONDS(500);
 
     // Check if modem sent OK response.
+    ssize_t nbytes;
     if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
     gsm.rx_buf[nbytes] = '\0';
+    int ret = (strstr(gsm.rx_buf, AT_OK) ? 0 : -1);
 
-    return (strstr(gsm.rx_buf, AT_OK) ? 0 : -1);
+    pthread_mutex_unlock(&gsm_mutex);
+
+    return ret; 
 }
 
 /****************************************************************************** 
@@ -291,12 +316,14 @@ int gsm_init(const char *serial_port)
  ******************************************************************************/
 void gsm_print_identification(FILE *stream)
 {
+    pthread_mutex_lock(&gsm_mutex);
     fprintf(stream, "Manufacturer: %s\n", gsm.identification.manufacturer);
     fprintf(stream, "Model:        %s\n", gsm.identification.model);
     fprintf(stream, "Revision:     %s\n", gsm.identification.revision);
     fprintf(stream, "SVN:          %s\n", gsm.identification.svn);
     fprintf(stream, "IMEI:         %s\n", gsm.identification.imei);
     fprintf(stream, "GCAP:         %s\n", gsm.identification.gcap);
+    pthread_mutex_unlock(&gsm_mutex);
 }
 
 /****************************************************************************** 
@@ -312,7 +339,7 @@ void gsm_print_identification(FILE *stream)
  ******************************************************************************/
 int gsm_send_message(const char *destination, const char *message)
 {
-    ssize_t nbytes;
+    pthread_mutex_lock(&gsm_mutex);
 
     // Send AT+CMGS command with destination address.
     sprintf(gsm.tx_buf, "%s=\"%s\"\r", AT_CMGS, destination);
@@ -320,6 +347,7 @@ int gsm_send_message(const char *destination, const char *message)
     if (serial_write(gsm.fd, gsm.tx_buf, strlen(gsm.tx_buf)) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
 
@@ -327,9 +355,11 @@ int gsm_send_message(const char *destination, const char *message)
     SLEEP_MSECONDS(500);
 
     // Check if modem responded with the prompt character '>'.
+    ssize_t nbytes;
     if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
     gsm.rx_buf[nbytes] = '\0';
@@ -337,6 +367,7 @@ int gsm_send_message(const char *destination, const char *message)
     if (strchr(gsm.rx_buf, '>') == NULL)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
 
@@ -349,6 +380,7 @@ int gsm_send_message(const char *destination, const char *message)
     if (serial_write(gsm.fd, gsm.tx_buf, nbytes) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
 
@@ -359,9 +391,12 @@ int gsm_send_message(const char *destination, const char *message)
     if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
     gsm.rx_buf[nbytes] = '\0';
+
+    pthread_mutex_unlock(&gsm_mutex);
 
     return (strstr(gsm.rx_buf, "+CMGS") ? 0 : -1);
 }
@@ -377,8 +412,11 @@ int gsm_send_message(const char *destination, const char *message)
  ******************************************************************************/
 int gsm_set_functionality_mode(gsm_functionality_mode_t mode)
 {
+    pthread_mutex_lock(&gsm_mutex); 
+
     if (mode == GSM_FUNCTIONALITY_MODE_ERROR)
     {
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
 
@@ -390,6 +428,7 @@ int gsm_set_functionality_mode(gsm_functionality_mode_t mode)
     if (serial_write(gsm.fd, gsm.tx_buf, strlen(gsm.tx_buf)) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
 
@@ -400,11 +439,15 @@ int gsm_set_functionality_mode(gsm_functionality_mode_t mode)
     if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return -1;
     }
     gsm.rx_buf[nbytes] = '\0';
+    int ret = (strstr(gsm.rx_buf, AT_OK) ? 0 : -1);
 
-    return (strstr(gsm.rx_buf, AT_OK) ? 0 : -1);
+    pthread_mutex_unlock(&gsm_mutex);
+
+    return ret;
 }
 
 /****************************************************************************** 
@@ -419,7 +462,7 @@ int gsm_set_functionality_mode(gsm_functionality_mode_t mode)
  ******************************************************************************/
 gsm_functionality_mode_t gsm_get_functionality_mode()
 {
-    ssize_t nbytes;
+    pthread_mutex_lock(&gsm_mutex); 
 
     // Send AT+CFUN command to change mode.
     sprintf(gsm.tx_buf, "%s?\r", AT_CFUN);
@@ -427,6 +470,7 @@ gsm_functionality_mode_t gsm_get_functionality_mode()
     if (serial_write(gsm.fd, gsm.tx_buf, strlen(gsm.tx_buf)) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return GSM_FUNCTIONALITY_MODE_ERROR;
     }
 
@@ -434,9 +478,11 @@ gsm_functionality_mode_t gsm_get_functionality_mode()
     SLEEP_MSECONDS(500);
 
     // Check that modem responded with OK.
+    ssize_t nbytes;
     if ((nbytes = serial_read(gsm.fd, gsm.rx_buf, GSM_RX_BUF_CAPACITY)) == -1)
     {
         serial_ioflush(gsm.fd);
+        pthread_mutex_unlock(&gsm_mutex);
         return GSM_FUNCTIONALITY_MODE_ERROR;
     }
     gsm.rx_buf[nbytes] = '\0';
@@ -447,22 +493,26 @@ gsm_functionality_mode_t gsm_get_functionality_mode()
 
     if ((pkey = strstr(gsm.rx_buf, KEY)) == NULL)
     {
-        return -1;
+        pthread_mutex_unlock(&gsm_mutex);
+        return GSM_FUNCTIONALITY_MODE_ERROR;
     }
     pkey += strlen(KEY);
  
     // Return appropriate value.
+    gsm_functionality_mode_t mode;
     switch (atoi(pkey))
     {
         case GSM_MINIMUM_FUNCTIONALITY_MODE:
-            return GSM_MINIMUM_FUNCTIONALITY_MODE;
+            mode = GSM_MINIMUM_FUNCTIONALITY_MODE;
         case GSM_FULL_FUNCTIONALITY_MODE:
-            return GSM_FULL_FUNCTIONALITY_MODE;
+            mode = GSM_FULL_FUNCTIONALITY_MODE;
         case GSM_FLIGHT_MODE:
-            return GSM_FLIGHT_MODE;
+            mode = GSM_FLIGHT_MODE;
         default:
-            return GSM_FUNCTIONALITY_MODE_ERROR;
+            mode = GSM_FUNCTIONALITY_MODE_ERROR;
     }
 
-    return GSM_FUNCTIONALITY_MODE_ERROR;
+    pthread_mutex_unlock(&gsm_mutex);
+
+    return mode;
 }
