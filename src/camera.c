@@ -218,6 +218,7 @@ int camera_detect_motion(uint8_t avg_pixel_diff)
     buffer.index = 0;
 
     // Activate streaming
+    DEBUG_LOG(stdout, "%s line %lu: Activate streaming\n", __FILE__, __LINE__);
     int type = buffer.type;
     if (ioctl(fd, VIDIOC_STREAMON, &type) < 0)
     {
@@ -244,6 +245,7 @@ int camera_detect_motion(uint8_t avg_pixel_diff)
     }
 
     // Deactivate streaming
+    DEBUG_LOG(stdout, "%s line %lu: Deactivate streaming\n", __FILE__, __LINE__);
     if (ioctl(fd, VIDIOC_STREAMOFF, &type) < 0)
     {
         DEBUG_LOG(stdout, "%s: failed VIDIOC_STREAMOFF\n" __FILE__);
