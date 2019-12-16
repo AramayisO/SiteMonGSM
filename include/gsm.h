@@ -39,13 +39,6 @@ typedef enum gsm_functionality_mode
 int gsm_init(const char *device);
 
 /**
- * Print the connected GSM modems product identification information.
- *
- * @param stream The output stream to print to.
- */
-void gsm_print_identification(FILE *stream);
-
-/**
  * Send a message to a destination address over the GSM network.
  *
  * @param destination The address to send the message to (e.g. a phone number)
